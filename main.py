@@ -1,9 +1,11 @@
+    
 # Fix para compatibilidade Pillow 10+ com MoviePy
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
-from flask import Flask, request, jsonify, render_template_string, send_from_directory
+from flask import Flask, request, jsonify, render_template_string, send_from_directory, session, redirect, url_for
+from functools import wraps
 from flask_cors import CORS
 import requests
 import json
@@ -22,15 +24,29 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
+# ✅ CONFIGURAÇÃO DE SENHA E SEGURANÇA
+app.secret_key = 'tribuna-hoje-secret-key-2025-mudar-isso-em-producao'
+APP_PASSWORD = 'tribunahj2025'  # ⚠️ MUDE ESTA SENHA!
+
+# Decorator para proteger rotas
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('logged_in'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+import os
 # Configuration
 class Config:
     PLACID_API_TOKEN = 'placid-mmv6puv1gvuucitb-hhflfvh5yeru1ijl'
     PLACID_API_URL = 'https://api.placid.app/api/rest/images'
-    GROQ_API_KEY = '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'
-    GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+    OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
     UPLOAD_FOLDER = os.path.abspath('uploads')
-    MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
-    ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov'}
+    MAX_FILE_SIZE = 700 * 1024 * 1024  # 700MB
+    ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'avi', 'mkv', 'webm', '3gp', 'hevc'}
 
 try:
     # MoviePy is optional; used for extracting frames from videos for reels
@@ -166,131 +182,141 @@ LOCAL_REELS_TEMPLATES = {
 AI_PROMPTS = {
     'legendas': """Gerador de Legendas Jornalísticas para Instagram
 
-Você é um jornalista especialista em copy para redes sociais, capaz de transformar descrições de notícias em legendas curtas, chamativas e informativas para posts de Instagram do Jornal Tribuna Hoje. Sempre que receber uma descrição de notícia, siga rigorosamente estas instruções:
+Você é um jornalista especialista em copy para redes sociais, responsável por transformar descrições de notícias em legendas para o Instagram do Jornal Tribuna Hoje.
 
-Análise Completa: Identifique os elementos centrais da notícia (quem, o quê, onde e consequência mais relevante) e INFIRA o assunto/tema principal (ex.: política, polícia, saúde, economia, clima, esporte, cultura, serviço).
+Sempre que receber uma notícia no campo de entrada, você deve gerar exatamente uma legenda no formato abaixo, seguindo todas as instruções:
 
-Impacto Inicial: Comece a legenda com uma chamada forte e clara, destacando a informação mais importante ou surpreendente da descrição.
+Regras obrigatórias:
 
-Contexto Curto: Acrescente 1 a 2 frases curtas que resumam o contexto de forma simples e acessível.
+Análise da Notícia
 
-Tom Jornalístico: Mantenha credibilidade, clareza e objetividade, sem sensacionalismo exagerado. Tom 100% jornalístico = sem abstrações da IA (com exceção do CTA e das tags). Tudo do próprio texto original com as devidas correções ortográficas.
+Leia atentamente o texto fornecido.
 
-CTA Estratégico (SEPARADO): Crie um CTA em linha própria no final "🔗 Leia a matéria completa no nosso site, link da bio" "⚠️ Compartilhe a informação" "📣 Salve e repasse para quem precisa" "🌧️ Acompanhe os alertas oficiais" "💬 O que você acha? Comente aqui"
+Identifique os elementos centrais: quem, o quê, onde e a consequência mais relevante.
 
-Hashtags por Assunto (SEPARADAS): Gere 4 a 6 hashtags específicas sobre o tema, seguindo regras:
-- No final em linha própria
-- Inclua sempre #TribunaHoje e, quando fizer sentido, #Alagoas e #Maceio (sem acento)
-- Foque em termos do assunto (ex.: #Saude, #Seguranca, #Politica, #Economia, #Clima, #Cultura, #Esporte)
-- Use todas em minúsculas, sem acentos, sem espaços, separadas por espaço; não repita hashtags; evite genéricas demais (#news, #insta)
+Construção da Legenda
 
-Formatação Obrigatória da Saída (exatamente 3 blocos, nesta ordem, separados por 1 linha em branco, sem rótulos):
+Impacto Inicial: Comece com a informação mais importante ou surpreendente.
 
-1) Corpo da legenda (2 a 3 frases)
+Contexto: Acrescente de 3 a 4 frases curtas que resumam o fato de forma clara e objetiva.
 
-2) CTA em linha única
+Tom Jornalístico: Mantenha credibilidade, clareza e objetividade, tom 100% jornalístico = sem abstrações da IA (com exceção do CTA e das tags). Tudo do próprio texto original com as devidas correções ortográficas. Nada de sensacionalismo ou comentários fora do texto.
 
-3) Hashtags em uma única linha
+CTA Estratégico (em linha separada):
 
-Padrão de Estilo:
-- Primeira letra maiúscula em todas as frases do corpo
-- Parágrafos curtos e claros (1 a 3 linhas cada)
-- Não copiar literalmente a descrição original; reescreva com nova estrutura e escolha de palavras
+Use exatamente essa CTA
+
+"🔗 Leia a matéria completa no nosso site, link da bio."
+
+Hashtags por Assunto (em linha separada): Sempre crie entre 2 a 5 hashtags.
+
+Inclua sempre #tribunahoje.
+
+Use também #alagoas e #maceio quando a notícia for local.
+
+As demais devem ser específicas ao tema (ex.: #saude, #seguranca, #politica, #economia, #clima, #cultura, #esporte).
+
+Todas devem estar em minúsculas, sem acento, sem espaços, sem repetição, separadas apenas por espaço.
+
+Formatação obrigatória da saída:
+
+A saída deve conter exatamente 3 blocos (sem rótulos, sem títulos, sem explicações):
+
+CTA: Em linha única, separado por uma quebra de linha.
+
+Hashtags: Em linha única, todas em minúsculas.
+
 Ortografia Obrigatória: Use exclusivamente a ortografia oficial da língua portuguesa do Brasil conforme o Novo Acordo Ortográfico. Não cometa erros de grafia, acentuação, concordância ou pontuação. Revise cuidadosamente antes de enviar.
-Resposta Direta: Retorne SOMENTE o texto final no formato acima, sem comentários, explicações ou qualquer texto adicional.""",
+
+Resposta Direta: Retorne SOMENTE o texto final no formato esperado, sem comentários, explicações ou qualquer texto adicional.
+""",
 
 
     'titulo': """Gerador Avançado de Títulos Jornalísticos Impactantes
 
-Você é um jornalista especialista em copy de Instagram para jornalismo, capaz de transformar descrições de notícias em títulos impactantes e irresistíveis para postagens no feed da Tribuna Hoje. Sempre que receber uma descrição, siga rigorosamente estas instruções:
+Você é um jornalista especialista em copy de Instagram para jornalismo, capaz de transformar descrições de notícias em títulos chamativos, irresistíveis e padronizados para postagens no feed da Tribuna Hoje.
 
-Análise Completa: Identifique claramente os elementos centrais da descrição (quem, o quê, onde e consequência mais relevante).
+Sempre que receber uma descrição de notícia, siga rigorosamente estas instruções:
 
-Alteração de Foco: Comece pelo dado mais impactante ou pela consequência mais forte da notícia, ainda que isso esteja apenas implícito ou no final da descrição original.
+📌 Regras obrigatórias:
 
-Inversão Dramática: Traga o clímax ou a informação mais chamativa para o início do título e só depois apresente o contexto, mantendo fluidez e clareza.
+Análise Completa:
 
-Palavras Obrigatórias: Sempre inclua naturalmente termos que reforcem credibilidade e alcance jornalístico, como: "Tribuna Hoje", "Alagoas", "Capital", "Interior", "Urgente", "Exclusivo", "Confirmado".
+Identifique os elementos centrais (quem, o quê, onde, consequência mais relevante).
 
-Detalhe Exclusivo: Acrescente obrigatoriamente uma reviravolta ou um dado intrigante não explicitado literalmente na descrição.
+Foco no Impacto:
 
-Ênfase Visual: Destaque até DUAS palavras de impacto em MAIÚSCULAS para chamar atenção imediata.
+O título deve começar pelo dado mais forte ou pela consequência mais grave, mesmo que esteja implícito ou ao final do texto original.
 
-Formatação Padronizada: Escreva todas as palavras com a primeira letra maiúscula.
+Inversão Dramática:
 
-Limite Rigoroso: O título deve ter obrigatoriamente entre 80 e 90 caracteres, contando espaços e pontuação. Se ultrapassar 90, corte exatamente na palavra onde exceder e finalize imediatamente com reticências (...).
+Traga o clímax da notícia para o início e mantenha fluidez na construção.
 
-Suspense Garantido: Termine sempre com reticências (...) para maximizar curiosidade e engajamento.
+Ênfase Visual:
 
-Evite Repetições: NUNCA copie literalmente a descrição original; sempre reescreva com nova estrutura.
+Coloque até DUAS palavras em MAIÚSCULAS para chamar atenção imediata.
 
-Resposta Direta: Retorne SOMENTE o título transformado, sem explicações, comentários ou textos adicionais.
+Formatação Padronizada:
 
-Exemplo de Referência:
+Escreva todas as palavras com a primeira letra maiúscula.
 
-Descrição original: "Hospital de Maceió registra aumento nos casos de dengue."
-Título revisado: "Casos De Dengue DISPARAM Em Maceió E Hospital Soa Alerta Para A População..."
+Limite de Caracteres:
 
-Descrição original: "MPF recomenda regras mais rígidas para construções na orla da Barra de São Miguel."
-Título revisado: "EXCLUSIVO: MPF Impõe Regras Mais Rígidas Para Construções Na Orla Da Barra..."
+O título deve ter entre 80 e 90 caracteres, contando espaços e pontuação.
 
-Descrição original: "Motoristas de aplicativo devem manter MEI regular para garantir isenção do IPVA."
-Título revisado: "Motoristas De Aplicativo Precisam Regularizar MEI Para Garantir Isenção Do IPVA...""",
+Se ultrapassar 90, corte na palavra onde exceder e finalize imediatamente com reticências (...).
+
+Proibição de Repetição Literal:
+
+Nunca copie a descrição original; sempre reescreva com nova estrutura e impacto.
+
+Ortografia Obrigatória: Use exclusivamente a ortografia oficial da língua portuguesa do Brasil conforme o Novo Acordo Ortográfico. Não cometa erros de grafia, acentuação, concordância ou pontuação. Revise cuidadosamente antes de enviar.
+
+Resposta Direta: Retorne SOMENTE o texto final no formato esperado, sem comentários, explicações ou qualquer texto adicional.
+
+Sua tarefa: Gerar apenas o título final com base na notícia completa dada na caixa de texto, seguindo todas as regras acima.""",
 
     'reescrita': """Modelador de Notícias – Estilo Tribuna Hoje
 
-Você é um jornalista sênior com mais de 10 anos de experiência em redação política e jornalismo sério. Sua função é transformar qualquer notícia recebida em um texto jornalístico no estilo do Tribuna Hoje, mantendo credibilidade, clareza e a identidade de um veículo tradicional.
-
-Regras:
-
+Você é um jornalista sênior com mais de 10 anos de experiência em redação e jornalismo sério. Sua função é transformar qualquer notícia recebida em um texto jornalístico no estilo do Tribuna Hoje, mantendo credibilidade, clareza e a identidade de um veículo tradicional.
 Tonalidade:
 
 Séria, institucional e objetiva.
 
-Imparcial, mas crítica quando necessário.
+Imparcial, 100% jornalístico, apenas mude algumas palavras da noticia original, mas sem fugir do contexto.
 
 Nada de sensacionalismo ou clickbait.
 
 Estrutura da Notícia:
 
-Lide (primeiro parágrafo): traga logo a informação principal (quem, o quê, quando, onde e por quê).
+Título: Claro e direto, sem exageros.
 
-Desenvolvimento: acrescente contexto político, social e histórico que ajude o leitor a entender o impacto da notícia.
+Subtítulo (opcional): Usar apenas quando agregar contexto.
 
-Citações: sempre que possível, mantenha falas de autoridades ou dados oficiais.
+Lide (1º parágrafo): Traga logo a informação principal (quem, o quê, quando, onde e por quê).
 
-Conclusão: indique próximos passos, desdobramentos ou relevância para Alagoas, o Brasil ou o cenário político.
+Desenvolvimento: Acrescente contexto político, social e histórico para explicar o impacto da notícia.
 
 Estilo Tribuna Hoje:
 
 Clareza e objetividade acima de tudo.
 
-Uso de linguagem jornalística padrão, sem gírias.
+Linguagem jornalística padrão, sem gírias e 100% de acordo com a língua portuguesa, não cometa erros ortográficos.
 
-Dar foco ao impacto político, social ou econômico da notícia.
+Foco no impacto político, social ou econômico.
 
-Tratar a informação com responsabilidade, reforçando credibilidade.
+Tratar a informação com responsabilidade e reforçar credibilidade.
 
-Formatação:
+Título no topo.
 
-Título claro e direto, sem exageros.
+Subtítulo (quando necessário).
 
-Subtítulo opcional para complementar contexto.
+Texto corrido entre 4 e 8 parágrafos.
 
-Texto corrido, entre 3 e 6 parágrafos.
+Instrução Final:
 
-Exemplo de Transformação:
-
-Notícia bruta: "Gaspar foi escolhido relator da comissão que vai investigar fraudes no INSS."
-
-Modelada para Tribuna Hoje:
-Título: Alfredo Gaspar assume relatoria da CPMI que investiga fraudes no INSS
-Texto: O deputado federal Alfredo Gaspar (União Brasil-AL) foi designado relator da Comissão Parlamentar Mista de Inquérito (CPMI) que apura possíveis fraudes no Instituto Nacional do Seguro Social (INSS). O anúncio foi feito nesta terça-feira pelo presidente da comissão, senador Carlos Viana (Podemos-MG). Em discurso, Gaspar afirmou que atuará com base na Constituição e garantiu empenho para dar respostas claras à sociedade.
-
-Instrução Final
-
-Sempre que receber uma notícia ou descrição, reescreva-a no formato da Tribuna Hoje, mantendo credibilidade, clareza e impacto jornalístico.
-Retorne apenas a versão final da notícia modelada (título + texto)."""
+Sempre que receber uma notícia ou descrição, reescreva-a no formato jornalístico da Tribuna Hoje.
+Retorne apenas a versão final da notícia modelada (Título + texto), sem comentários, explicações ou marcações adicionais."""
 }
 
 # Utility functions
@@ -541,7 +567,7 @@ def _create_title_overlay_for_template(width: int, height: int, title_text: str,
         return overlay
         
     except Exception as e:
-        logger.error(f"Erro ao criar overlay Tribuna Hoje: {e}")
+        logger.error("Erro ao criar overlay Tribuna Hoje: {e}")
         return None
 
 def _wrap_text(text: str, font: ImageFont.ImageFont, max_width: int) -> list:
@@ -571,19 +597,555 @@ def _wrap_text(text: str, font: ImageFont.ImageFont, max_width: int) -> list:
         lines.append(' '.join(current_line))
     
     return lines
+def get_video_codec_info(video_path: str) -> dict:
+    """
+    🔍 ANDROID/MOBILE DEBUG: Obtém informações detalhadas do codec usando FFprobe
+    Retorna dict com codec_name, codec_type, profile, pixel_format, etc.
+    """
+    try:
+        import subprocess
+        import json
 
+        logger.info(f"🔍 Analisando codec do vídeo: {os.path.basename(video_path)}")
+
+        # Usa ffprobe para obter informações detalhadas
+        cmd = [
+            'ffprobe',
+            '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_streams',
+            '-select_streams', 'v:0',  # Apenas stream de vídeo
+            video_path
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+        if result.returncode != 0:
+            logger.warning(f"⚠️ FFprobe falhou: {result.stderr}")
+            return {'error': 'ffprobe_failed', 'method': 'fallback'}
+
+        data = json.loads(result.stdout)
+
+        if not data.get('streams'):
+            logger.warning("⚠️ Nenhum stream de vídeo encontrado")
+            return {'error': 'no_video_stream', 'method': 'fallback'}
+
+        stream = data['streams'][0]
+        codec_info = {
+            'codec_name': stream.get('codec_name', 'unknown'),
+            'codec_long_name': stream.get('codec_long_name', 'unknown'),
+            'profile': stream.get('profile', 'unknown'),
+            'width': stream.get('width', 0),
+            'height': stream.get('height', 0),
+            'pix_fmt': stream.get('pix_fmt', 'unknown'),
+            'fps': eval(stream.get('r_frame_rate', '0/1')),  # Converte "30/1" para 30.0
+            'method': 'ffprobe'
+        }
+
+        logger.info(f"✅ Codec detectado: {codec_info['codec_name']} ({codec_info['codec_long_name']})")
+        logger.info(f"   📐 Resolução: {codec_info['width']}x{codec_info['height']}")
+        logger.info(f"   🎬 FPS: {codec_info['fps']}, Profile: {codec_info['profile']}")
+
+        return codec_info
+
+    except FileNotFoundError:
+        logger.warning("⚠️ FFprobe não encontrado - usando método fallback")
+        return {'error': 'ffprobe_not_found', 'method': 'fallback'}
+    except Exception as e:
+        logger.warning(f"⚠️ Erro ao analisar codec com FFprobe: {e}")
+        return {'error': str(e), 'method': 'fallback'}
+
+def convert_video_if_needed(input_path: str) -> str:
+    """
+    Converte vídeos em formatos problemáticos (HEVC, MOV Apple, 3GP Android) para MP4 H.264
+    🎯 OTIMIZADO PARA ANDROID: Usa FFprobe para detecção robusta de codec
+    Retorna o caminho do vídeo convertido ou o original se não precisar converter
+    """
+    if mpe is None:
+        logger.warning("❌ MoviePy não disponível, pulando conversão")
+        return input_path
+
+    try:
+        logger.info("=" * 60)
+        logger.info("🔍 VERIFICANDO NECESSIDADE DE CONVERSÃO DE VÍDEO")
+        logger.info(f"📁 Arquivo: {os.path.basename(input_path)}")
+
+        # Detecta se precisa converter
+        needs_conversion = False
+        conversion_reasons = []
+
+        # 1. Verifica extensão
+        ext = os.path.splitext(input_path)[1].lower()
+        logger.info(f"📝 Extensão: {ext}")
+
+        if ext in ['.mov', '.hevc', '.3gp']:
+            needs_conversion = True
+            reason = f"Extensão {ext} requer conversão (formato mobile/Apple)"
+            conversion_reasons.append(reason)
+            logger.info(f"🔄 {reason}")
+
+        # 2. NOVO: Usa FFprobe para detecção robusta de codec
+        codec_info = get_video_codec_info(input_path)
+
+        if codec_info.get('method') == 'ffprobe':
+            codec_name = codec_info['codec_name'].lower()
+
+            # Lista de codecs problemáticos que precisam conversão
+            problematic_codecs = ['hevc', 'h265', 'vp9', 'av1', 'mpeg2video', 'msmpeg4']
+
+            if codec_name in problematic_codecs:
+                needs_conversion = True
+                reason = f"Codec {codec_info['codec_name']} ({codec_info['codec_long_name']}) incompatível"
+                conversion_reasons.append(reason)
+                logger.info(f"🔄 {reason}")
+
+            # 3GP específico: verifica codec interno
+            if ext == '.3gp':
+                if codec_name not in ['h264', 'mpeg4']:
+                    needs_conversion = True
+                    reason = f"3GP com codec {codec_name} precisa conversão para H.264"
+                    conversion_reasons.append(reason)
+                    logger.info(f"🔄 {reason}")
+        else:
+            # Fallback: tenta com MoviePy se FFprobe falhar
+            logger.info("⚠️ FFprobe não disponível, usando método fallback com MoviePy")
+            try:
+                test_clip = mpe.VideoFileClip(input_path)
+                codec = getattr(test_clip, 'codec', 'unknown')
+                codec_str = str(codec).lower()
+
+                if 'hevc' in codec_str or 'h265' in codec_str or 'vp9' in codec_str:
+                    needs_conversion = True
+                    reason = f"Codec {codec} detectado (fallback)"
+                    conversion_reasons.append(reason)
+                    logger.info(f"🔄 {reason}")
+
+                test_clip.close()
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao verificar codec com MoviePy: {e}, forçando conversão")
+                needs_conversion = True
+                conversion_reasons.append(f"Não foi possível verificar codec, conversão preventiva")
+
+        # Se não precisa converter, retorna o original
+        if not needs_conversion:
+            logger.info("✅ Vídeo já está em formato compatível (H.264 ou similar)")
+            logger.info("=" * 60)
+            return input_path
+
+        # Converte o vídeo
+        logger.info("🔄 CONVERSÃO NECESSÁRIA")
+        for i, reason in enumerate(conversion_reasons, 1):
+            logger.info(f"   {i}. {reason}")
+
+        logger.info("🎬 Iniciando conversão para MP4 H.264...")
+        converted_filename = generate_filename("converted", "mp4")
+        converted_path = os.path.join(Config.UPLOAD_FOLDER, converted_filename)
+
+        clip = mpe.VideoFileClip(input_path)
+        logger.info(f"📊 Vídeo original: {clip.size[0]}x{clip.size[1]}, {clip.duration:.1f}s, {clip.fps}fps")
+
+        # Exporta com configurações compatíveis
+        logger.info("⚙️ Configurações: H.264, AAC, 30fps, 2000kbps")
+        clip.write_videofile(
+            converted_path,
+            codec='libx264',
+            audio_codec='aac',
+            preset='medium',
+            fps=30,
+            bitrate='2000k',
+            verbose=False,
+            logger=None
+        )
+
+        clip.close()
+
+        # Verifica se a conversão foi bem-sucedida
+        if os.path.exists(converted_path) and os.path.getsize(converted_path) > 0:
+            converted_size_mb = os.path.getsize(converted_path) / (1024 * 1024)
+            logger.info(f"✅ Vídeo convertido com sucesso!")
+            logger.info(f"   📁 Arquivo: {converted_filename}")
+            logger.info(f"   📊 Tamanho: {converted_size_mb:.2f}MB")
+            logger.info("=" * 60)
+            return converted_path
+        else:
+            logger.error("❌ Conversão falhou - arquivo não criado ou vazio")
+            logger.info("=" * 60)
+            return input_path
+
+    except Exception as e:
+        logger.error(f"❌ Erro ao converter vídeo: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        logger.info("=" * 60)
+        # Se falhar, retorna o original e deixa o MoviePy tentar processar
+        return input_path
+        
 def generate_local_reels_video(source_media_path: str, title_text: str, template_key: str) -> Optional[Tuple[str, str]]:
     """
-    Gera um vídeo de reels usando template de fundo "template1".
-    Compõe: fundo fixo + vídeo centralizado + título superior.
-    O vídeo agora preenche toda a largura do template.
+    Gera um vídeo de reels usando template de fundo.
+    OTIMIZADO PARA VÍDEOS DE ATÉ 10 MINUTOS E FORMATOS MOBILE (ANDROID/iOS)
+    🎯 ANDROID DEBUG: Logs detalhados para troubleshooting
     Returns (filepath, public_url) or None.
     """
     if mpe is None:
-        logger.error("MoviePy não está disponível - verifique instalação")
-        logger.error("Tente: pip install moviepy imageio imageio-ffmpeg")
+        logger.error("❌ MoviePy não está disponível - verifique instalação")
+        logger.error("   Tente: pip install moviepy imageio imageio-ffmpeg")
+        return None
+
+    logger.info("=" * 80)
+    logger.info("🎬 INICIANDO GERAÇÃO DE REELS")
+    logger.info("=" * 80)
+    logger.info(f"📁 Arquivo de entrada: {os.path.basename(source_media_path)}")
+    logger.info(f"📝 Template: {template_key}")
+    logger.info(f"📜 Título: {title_text[:50]}..." if len(title_text) > 50 else f"📜 Título: {title_text}")
+
+    # Informações do arquivo antes da conversão
+    file_ext = os.path.splitext(source_media_path)[1].lower()
+    file_size_mb = os.path.getsize(source_media_path) / (1024 * 1024)
+    logger.info(f"📊 Arquivo original: {file_ext}, {file_size_mb:.2f}MB")
+
+    # NOVO: Converte vídeos mobile se necessário (com logs detalhados internos)
+    original_path = source_media_path
+    source_media_path = convert_video_if_needed(source_media_path)
+
+    # Verifica se houve conversão
+    if source_media_path != original_path:
+        logger.info("✅ Vídeo foi convertido para formato compatível")
+        logger.info(f"   Original: {os.path.basename(original_path)}")
+        logger.info(f"   Convertido: {os.path.basename(source_media_path)}")
+    else:
+        logger.info("✅ Vídeo já está em formato compatível, sem conversão necessária")
+    
+    logger.info("🔧 Testando importações do MoviePy...")
+    try:
+        from moviepy.editor import VideoFileClip, ImageClip, ColorClip, CompositeVideoClip, TextClip
+        logger.info("✅ Importações básicas OK")
+    except Exception as e:
+        logger.error(f"❌ Falha nas importações do MoviePy: {e}")
+        return None
+
+    # Verifica se o template existe
+    if template_key not in LOCAL_REELS_TEMPLATES:
+        logger.error(f"❌ Template de reels não encontrado: {template_key}")
+        logger.error(f"   Templates disponíveis: {list(LOCAL_REELS_TEMPLATES.keys())}")
+        return None
+
+    template = LOCAL_REELS_TEMPLATES[template_key]
+
+    try:
+        width, height = template['dimensions']['width'], template['dimensions']['height']
+        logger.info(f"🎨 Gerando reels com template: {template['name']}")
+        logger.info(f"📐 Dimensões do template final: {width}x{height} (vertical)")
+
+        # Carrega o vídeo ou converte imagem para vídeo
+        clip = None
+        logger.info("─" * 80)
+        logger.info("📹 CARREGANDO MÍDIA DE ENTRADA")
+        logger.info(f"   Arquivo existe: {os.path.exists(source_media_path)}")
+        logger.info(f"   Tamanho: {os.path.getsize(source_media_path) / (1024*1024):.2f}MB")
+
+        # 🎯 ANDROID DEBUG: Tenta carregar como vídeo
+        try:
+            logger.info("🎬 Tentando carregar como vídeo...")
+            clip = mpe.VideoFileClip(source_media_path)
+
+            logger.info(f"✅ Vídeo carregado com sucesso!")
+            logger.info(f"   📐 Resolução: {clip.w}x{clip.h}")
+            logger.info(f"   ⏱️  Duração: {clip.duration:.2f}s")
+            logger.info(f"   🎞️  FPS: {clip.fps}")
+            logger.info(f"   📊 Aspect Ratio: {clip.w/clip.h:.3f}")
+            logger.info(f"   🔊 Áudio: {'Sim' if clip.audio is not None else 'Não'}")
+
+            # Verifica se é um formato mobile comum
+            is_vertical = clip.h > clip.w
+            is_mobile_aspect = 0.5 <= (clip.w/clip.h) <= 0.6  # ~9:16
+            logger.info(f"   📱 Vertical: {is_vertical}")
+            logger.info(f"   📱 Formato mobile (9:16): {is_mobile_aspect}")
+
+        except Exception as e:
+            logger.warning(f"⚠️ Não foi possível carregar como vídeo: {type(e).__name__}")
+            logger.warning(f"   Detalhes: {str(e)}")
+            logger.info("🖼️ Tentando carregar como imagem...")
+            try:
+                with Image.open(source_media_path) as img:
+                    img = img.convert('RGB')
+                    temp_img = generate_filename("reels_from_image", "png")
+                    temp_path = os.path.join(Config.UPLOAD_FOLDER, temp_img)
+                    ensure_upload_directory()
+                    img.save(temp_path, format='PNG')
+                image_clip = mpe.ImageClip(temp_path).set_duration(5)
+                clip = image_clip.set_fps(30)
+                logger.info("Imagem convertida para vídeo com sucesso")
+            except Exception as e2:
+                logger.error(f"Falha ao abrir mídia: {type(e2).__name__}: {e2}")
+                return None
+
+        # Carrega a imagem de fundo baseada no template selecionado
+        if template_key == 'reels_modelo_2':
+            template_bg_path = os.path.join(os.path.dirname(__file__), "template2.jpg")
+        else:
+            template_bg_path = os.path.join(os.path.dirname(__file__), "template1.jpg")
+            
+        if not os.path.exists(template_bg_path):
+            logger.error(f"Imagem de template não encontrada: {template_bg_path}")
+            logger.error(f"Template key: {template_key}")
+            return None
+        
+        logger.info(f"Usando template de fundo: {template_bg_path}")
+        
+        # Cria o fundo usando a imagem template esticando para ocupar toda a tela
+        bg = mpe.ImageClip(template_bg_path).set_duration(clip.duration).resize((width, height))
+        logger.info(f"Fundo esticado para ocupar toda a tela: {width}x{height}")
+        
+        # NOVA LÓGICA: Vídeo preenchendo toda a largura do template
+        video_area_top = 400
+        video_area_bottom = 1520
+        video_area_height = video_area_bottom - video_area_top
+        
+        video_target_width = width
+        
+        original_aspect_ratio = clip.w / clip.h
+        video_target_height = int(video_target_width / original_aspect_ratio)
+        
+        logger.info(f"Proporção original do vídeo: {original_aspect_ratio:.3f}")
+        logger.info(f"Dimensões calculadas para largura total: {video_target_width}x{video_target_height}")
+        
+        if video_target_height > video_area_height:
+            video_target_height = video_area_height
+            video_target_width = int(video_target_height * original_aspect_ratio)
+            logger.info(f"Ajustado por altura disponível: {video_target_width}x{video_target_height}")
+        
+        resized_clip = clip.resize(newsize=(video_target_width, video_target_height))
+        
+        video_x = (width - video_target_width) // 2
+        video_y = video_area_top + (video_area_height - video_target_height) // 2
+        positioned_video = resized_clip.set_position((video_x, video_y))
+        
+        logger.info(f"Vídeo redimensionado para: {video_target_width}x{video_target_height}")
+        logger.info(f"Posição do vídeo: ({video_x}, {video_y})")
+
+        title_clip = None
+        if title_text:
+            try:
+                if template_key == 'reels_modelo_2':
+                    canvas_height = 250
+                    font_size = 51
+                    line_height = 70
+                    text_align = 'left'
+                    margin_left = 90
+                    title_y_position = video_area_top - 7
+                else:
+                    canvas_height = 400
+                    font_size = 50
+                    line_height = 70
+                    text_align = 'center'
+                    margin_left = 60
+                    title_y_position = video_area_top - 62
+                
+                title_img = Image.new('RGBA', (width, canvas_height), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(title_img)
+                
+                font = None
+                try:
+                    font = ImageFont.truetype("Oswald-Bold.ttf", font_size)
+                    logger.info(f"Fonte Oswald-Bold.ttf carregada: {font_size}px")
+                except Exception:
+                    try:
+                        font = ImageFont.truetype("arialbd.ttf", font_size)
+                    except Exception:
+                        font = ImageFont.load_default()
+                
+                text = title_text.upper().strip()
+                max_width = width - (margin_left * 2)
+                
+                words = text.split()
+                lines = []
+                current_line = []
+                
+                for word in words:
+                    test_line = ' '.join(current_line + [word])
+                    bbox = draw.textbbox((0, 0), test_line, font=font)
+                    text_width = bbox[2] - bbox[0]
+                    
+                    if text_width <= max_width:
+                        current_line.append(word)
+                    else:
+                        if current_line:
+                            lines.append(' '.join(current_line))
+                            current_line = [word]
+                        else:
+                            lines.append(word)
+                
+                if current_line:
+                    lines.append(' '.join(current_line))
+                
+                total_height = len(lines) * line_height
+                start_y = (canvas_height - total_height) // 2
+                
+                for i, line in enumerate(lines):
+                    bbox = draw.textbbox((0, 0), line, font=font)
+                    text_width = bbox[2] - bbox[0]
+                    
+                    if text_align == 'left':
+                        x = margin_left
+                    else:
+                        x = (width - text_width) // 2
+                    
+                    y = start_y + i * line_height
+                    
+                    draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+                
+                title_filename = generate_filename("title_overlay", "png")
+                title_path = os.path.join(Config.UPLOAD_FOLDER, title_filename)
+                ensure_upload_directory()
+                title_img.save(title_path, format='PNG')
+                
+                title_clip = mpe.ImageClip(title_path).set_duration(clip.duration).set_position((0, title_y_position))
+                logger.info(f"Título criado: {template_key}, align={text_align}, size={font_size}px")
+                
+            except Exception as e:
+                logger.error(f"Falha ao criar título: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+
+        clips_to_compose = [bg, positioned_video]
+        if title_clip:
+            clips_to_compose.append(title_clip)
+        
+        composed = mpe.CompositeVideoClip(clips_to_compose)
+
+        try:
+            if hasattr(clip, 'audio') and clip.audio is not None:
+                composed = composed.set_audio(clip.audio)
+                logger.info("Áudio original preservado")
+        except Exception as e:
+            logger.warning(f"Não foi possível preservar áudio: {e}")
+
+        out_filename = generate_filename(template_key, "mp4")
+        out_path = os.path.join(Config.UPLOAD_FOLDER, out_filename)
+        
+        fps = None
+        try:
+            fps = int(getattr(clip, 'fps', 30) or 30)
+        except Exception:
+            fps = 30
+
+        logger.info(f"Exportando vídeo para: {out_path}")
+        try:
+            composed.write_videofile(
+                out_path,
+                fps=min(max(fps, 24), 60),
+                codec='libx264',
+                audio_codec='aac',
+                threads=8,
+                preset='veryfast',
+                verbose=False,
+                logger=None
+            )
+            logger.info("Exportação concluída!")
+        except Exception as e:
+            logger.error(f"Erro na exportação: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"Traceback exportação: {traceback.format_exc()}")
+            return None
+
+        try:
+            if clip is not None:
+                clip.close()
+            if 'resized_clip' in locals():
+                resized_clip.close()
+            if 'composed' in locals():
+                composed.close()
+            if title_clip is not None:
+                title_clip.close()
+        except Exception:
+            pass
+
+        public_url = f"{request.url_root}uploads/{out_filename}"
+        logger.info(f"Reels gerado com sucesso: {public_url}")
+        return out_path, public_url
+        
+    except Exception as e:
+        logger.error(f"Falha ao gerar vídeo local de reels: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return None
     
+def generate_local_capa_jornal(source_media_path: str) -> Optional[Tuple[str, str]]:
+    """
+    Gera uma imagem de capa de jornal sobrepondo a foto do usuário no template.
+    Returns (filepath, public_url) or None.
+    """
+    try:
+        template_bg_path = os.path.join(os.path.dirname(__file__), "template_capa_jornal.jpg")
+        
+        if not os.path.exists(template_bg_path):
+            logger.error(f"Template de capa não encontrado: {template_bg_path}")
+            return None
+        
+        logger.info(f"Carregando template de capa: {template_bg_path}")
+        
+        # Carrega o template de fundo
+        background = Image.open(template_bg_path).convert('RGB')
+        bg_width, bg_height = background.size
+        logger.info(f"Template carregado: {bg_width}x{bg_height}")
+        
+        # Carrega a imagem do usuário
+        with Image.open(source_media_path) as user_img:
+            user_img = user_img.convert('RGB')
+            user_width, user_height = user_img.size
+            logger.info(f"Imagem do usuário: {user_width}x{user_height}")
+            
+            # ✨ ÁREA MAIOR - ajuste estes valores para aumentar/diminuir ✨
+            target_x = 30           # Posição horizontal (menor = mais à esquerda)
+            target_y = 12           # Posição vertical (menor = mais acima)
+            max_width = 970         # Largura máxima (AUMENTE para imagem maior)
+            max_height = 1300       # Altura máxima (AUMENTE para imagem maior)
+            
+            # Calcula a proporção da imagem do usuário
+            user_aspect = user_width / user_height
+            
+            logger.info(f"Proporção da imagem: {user_aspect:.3f}")
+            
+            # ✅ Redimensiona para CABER na área (FIT, não FILL)
+            # Isso garante que NADA seja cortado!
+            if user_width / max_width > user_height / max_height:
+                # Imagem limitada pela LARGURA
+                new_width = max_width
+                new_height = int(max_width / user_aspect)
+            else:
+                # Imagem limitada pela ALTURA
+                new_height = max_height
+                new_width = int(max_height * user_aspect)
+            
+            logger.info(f"Redimensionando para: {new_width}x{new_height} (SEM CORTE)")
+            user_img_resized = user_img.resize((new_width, new_height), Image.LANCZOS)
+            
+            # ✅ Centraliza a imagem na área disponível (sem cortar!)
+            final_x = target_x + (max_width - new_width) // 2
+            final_y = target_y + (max_height - new_height) // 2
+            
+            # Cola a imagem do usuário no template
+            background.paste(user_img_resized, (final_x, final_y))
+            logger.info(f"Imagem colada COMPLETA na posição: ({final_x}, {final_y})")
+        
+        # Salva o resultado
+        out_filename = generate_filename("feed_capa_jornal", "png")
+        out_path = os.path.join(Config.UPLOAD_FOLDER, out_filename)
+        ensure_upload_directory()
+        background.save(out_path, format="PNG", quality=95)
+        
+        public_url = f"{request.url_root}uploads/{out_filename}"
+        logger.info(f"Capa de jornal gerada: {public_url}")
+        
+        return out_path, public_url
+        
+    except Exception as e:
+        logger.error(f"Erro ao gerar capa de jornal: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return None
+
     # Teste de componentes MoviePy
     logger.info("Testando importações do MoviePy...")
     try:
@@ -813,8 +1375,8 @@ def generate_local_reels_video(source_media_path: str, title_text: str, template
                 fps=min(max(fps, 24), 60),
                 codec='libx264',
                 audio_codec='aac',
-                threads=2,
-                preset='medium',
+                threads=4,
+                preset='veryfast',
                 verbose=False,
                 logger=None
             )
@@ -848,10 +1410,10 @@ def generate_local_reels_video(source_media_path: str, title_text: str, template
         logger.error(f"Traceback: {traceback.format_exc()}")
         return None
 
-def call_groq_api(prompt: str, content: str, max_tokens: int = 1000) -> Optional[str]:
-    """Call Groq API with error handling and retries"""
-    if not Config.GROQ_API_KEY or Config.GROQ_API_KEY == 'your-api-key-here':
-        logger.warning("Groq API key not configured")
+def call_openai_api(prompt: str, content: str, max_tokens: int = 1000) -> Optional[str]:
+    """Call OpenAI API with error handling and retries"""
+    if not Config.OPENAI_API_KEY or Config.OPENAI_API_KEY == '':
+        logger.warning("OpenAI API key not configured")
         return None
     
     # Truncate content to prevent API limits
@@ -860,27 +1422,30 @@ def call_groq_api(prompt: str, content: str, max_tokens: int = 1000) -> Optional
     
     full_prompt = f"{prompt}\n\nConteúdo para processar:\n{content}"
     
-    if len(full_prompt) > 8000:
-        full_prompt = full_prompt[:8000] + "..."
+    if len(full_prompt) > 12000:
+        full_prompt = full_prompt[:12000] + "..."
     
     headers = {
-        'Authorization': f'Bearer {Config.GROQ_API_KEY}',
+        'Authorization': f'Bearer {Config.OPENAI_API_KEY}',
         'Content-Type': 'application/json'
     }
     
     payload = {
-        "messages": [{"role": "user", "content": full_prompt}],
-        "model": "llama-3.1-8b-instant",
-        "max_tokens": min(max_tokens, 500),
+        "model": "gpt-3.5-turbo",
+        "messages": [
+            {"role": "system", "content": "Você é um assistente especializado em jornalismo."},
+            {"role": "user", "content": full_prompt}
+        ],
+        "max_tokens": min(max_tokens, 1000),
         "temperature": 0.7
     }
     
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            logger.info(f"Calling Groq API (attempt {attempt + 1})")
+            logger.info(f"Calling OpenAI API (attempt {attempt + 1})")
             response = requests.post(
-                Config.GROQ_API_URL, 
+                Config.OPENAI_API_URL, 
                 json=payload, 
                 headers=headers,
                 timeout=30
@@ -890,12 +1455,12 @@ def call_groq_api(prompt: str, content: str, max_tokens: int = 1000) -> Optional
                 result = response.json()
                 return result['choices'][0]['message']['content'].strip()
             else:
-                logger.error(f"Groq API error: {response.status_code} - {response.text}")
+                logger.error(f"OpenAI API error: {response.status_code} - {response.text}")
                 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Groq API request failed (attempt {attempt + 1}): {e}")
+            logger.error(f"OpenAI API request failed (attempt {attempt + 1}): {e}")
             if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)  # Exponential backoff
+                time.sleep(2 ** attempt)
     
     return None
 
@@ -1140,13 +1705,11 @@ def configure_layers_for_template(template_key: str, template_info: Dict[str, An
             logger.info("⏭️ No subject provided")
             
         if credits:
-            layers["creditfoto"] = {"text": f"FOTO: {credits}"}
-            logger.info(f"✅ Added credits layer: FOTO: {credits}")
+            layers["creditfoto"] = {"text": f" {credits}"}
+            logger.info(f"✅ Added credits layer: {credits}")
         else:
             logger.info("⏭️ No credits provided")
             
-        layers["credit"] = {"text": "Tribuna Hoje"}
-        logger.info("✅ Added credit layer: Tribuna Hoje")
         
     elif template_type == 'story' and title:
         layers["titulocopy"] = {"text": title}
@@ -1179,7 +1742,33 @@ def error_response(message: str, **kwargs) -> Dict[str, Any]:
     return response
 
 # Route handlers
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Página de login com senha"""
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == APP_PASSWORD:
+            session['logged_in'] = True
+            logger.info("✅ Login bem-sucedido!")
+            return redirect(url_for('index'))
+        else:
+            logger.warning("❌ Tentativa de login falhou!")
+            return render_template_string(LOGIN_TEMPLATE, error=True)
+    
+    if session.get('logged_in'):
+        return redirect(url_for('index'))
+    
+    return render_template_string(LOGIN_TEMPLATE, error=False)
+
+@app.route('/logout')
+def logout():
+    """Logout do sistema"""
+    session.pop('logged_in', None)
+    logger.info("🔒 Usuário deslogado")
+    return redirect(url_for('login'))
+
 @app.route('/')
+@login_required  # ← ADICIONE ESTA LINHA
 def index():
     return render_template_string(HTML_TEMPLATE)
 
@@ -1336,13 +1925,8 @@ def handle_generate_post(payload: Dict[str, Any], request) -> jsonify:
     logger.info("=" * 50)
     logger.info("🚀 STARTING handle_generate_post")
     logger.info(f"📦 Payload received: {payload}")
-    logger.info(f"🔍 Request files: {request.files}")
-    logger.info(f"🔍 Request form: {request.form}")
     
     file = request.files.get('file') if hasattr(request, 'files') else None
-    logger.info(f"📁 File object: {file}")
-    logger.info(f"📁 File filename: {file.filename if file else 'None'}")
-    logger.info(f"📁 File content type: {file.content_type if file else 'None'}")
     
     if not file:
         logger.error("❌ No file provided")
@@ -1351,69 +1935,70 @@ def handle_generate_post(payload: Dict[str, Any], request) -> jsonify:
     logger.info("✅ File validation passed")
     
     # Validate required fields
-    template_key = payload.get('template', 'feed_1_red')
+    template_key = payload.get('template', 'feed_1')
     title = payload.get('title', '')
     subject = payload.get('subject', '')
     credits = payload.get('credits', '')
     
     logger.info(f"🎯 Template key: {template_key}")
-    logger.info(f"📝 Title: {title}")
-    logger.info(f"📝 Subject: {subject}")
-    logger.info(f"📝 Credits: {credits}")
     
-    # Check if it's a local reels template first
-    if template_key in LOCAL_REELS_TEMPLATES:
-        logger.info("🎬 Using local reels video compositor (no Placid)")
-        # Upload file first
-        logger.info("💾 Starting file upload process for reels")
+    # Check if it's the capa de jornal template
+    if template_key == 'feed_capa_jornal':
+        logger.info("📰 Using local capa de jornal compositor")
         success, filepath, public_url = save_uploaded_file(file, "post")
-        logger.info(f"💾 Upload result - Success: {success}, Filepath: {filepath}, URL: {public_url}")
         
         if not success:
-            logger.error(f"❌ File upload failed: {public_url}")
+            logger.error(f"File upload failed: {public_url}")
+            return jsonify(error_response(public_url))
+        
+        generated = generate_local_capa_jornal(filepath)
+        if not generated:
+            return jsonify(error_response("Falha ao gerar capa de jornal"))
+        
+        _, public_out_url = generated
+        return jsonify(success_response(
+            "Capa de jornal gerada com sucesso!",
+            imageUrl=public_out_url
+        ))
+    
+    # Check if it's a local reels template
+    if template_key in LOCAL_REELS_TEMPLATES:
+        logger.info("🎬 Using local reels video compositor")
+        success, filepath, public_url = save_uploaded_file(file, "post")
+        
+        if not success:
             return jsonify(error_response(public_url))
         
         generated = generate_local_reels_video(filepath, title, template_key)
         if not generated:
-            return jsonify(error_response("Falha ao gerar reels localmente"))
+            return jsonify(error_response("Falha ao gerar reels"))
+        
         _, public_out_url = generated
         return jsonify(success_response(
             "Reels gerado com sucesso!",
             videoUrl=public_out_url
         ))
     
+    # Normal Placid template processing
     if template_key not in PLACID_TEMPLATES:
-        logger.warning(f"⚠️ Template {template_key} not found, using fallback")
-        template_key = 'feed_1'  # Fallback
+        template_key = 'feed_1'
     
     template_info = PLACID_TEMPLATES[template_key]
-    logger.info(f"🎨 Template info: {template_info}")
     
-    # Check if feed template requires additional fields
     if template_info['type'] == 'feed':
-        logger.info("🔍 Checking feed template requirements")
         if not subject or not credits:
-            logger.error(f"❌ Feed template missing fields - Subject: {subject}, Credits: {credits}")
             return jsonify(error_response("Feed templates require subject and credits"))
-        logger.info("✅ Feed template requirements met")
     
-    logger.info("💾 Starting file upload process")
     success, filepath, public_url = save_uploaded_file(file, "post")
-    logger.info(f"💾 Upload result - Success: {success}, Filepath: {filepath}, URL: {public_url}")
-    
     if not success:
-        logger.error(f"❌ File upload failed: {public_url}")
         return jsonify(error_response(public_url))
     
-
-    logger.info("🔧 Configuring layers for template")
     layers = configure_layers_for_template(
         template_key, template_info, public_url,
         title=title,
         subject=subject,
         credits=credits
     )
-    logger.info(f"🔧 Layers configured: {layers}")
     
     modifications = {
         "filename": f"instagram_post_{int(time.time())}.png",
@@ -1421,28 +2006,22 @@ def handle_generate_post(payload: Dict[str, Any], request) -> jsonify:
         "height": template_info['dimensions']['height'],
         "image_format": "png"
     }
-    logger.info(f"⚙️ Modifications: {modifications}")
     
-    logger.info("🎨 Creating Placid image")
     result = create_placid_image(template_info['uuid'], layers, modifications)
-    logger.info(f"🎨 Placid result: {result}")
     
     if result:
         if result.get('image_url'):
-            logger.info("✅ Image created with direct URL")
             return jsonify(success_response(
                 "Post generated successfully!",
                 imageUrl=result['image_url']
             ))
         else:
-            logger.info("⏳ Image processing in background")
             return jsonify(success_response(
                 "Post processing...",
                 imageId=result.get('id')
             ))
     else:
-        logger.error("❌ Failed to create post in Placid")
-        return jsonify(error_response("Failed to create post"))
+        return jsonify(error_response("🚫 ACESSO BLOQUEADO - CRÉDITOS ESGOTADOS!"))
 
 def handle_generate_title(payload: Dict[str, Any], request) -> jsonify:
     """Handle title generation with AI"""
@@ -1450,7 +2029,7 @@ def handle_generate_title(payload: Dict[str, Any], request) -> jsonify:
     if not content:
         return jsonify(error_response("News content is required"))
     
-    suggested_title = call_groq_api(AI_PROMPTS['titulo'], content, max_tokens=200)
+    suggested_title = call_openai_api(AI_PROMPTS['titulo'], content, max_tokens=200)
     
     if suggested_title:
         return jsonify(success_response(
@@ -1476,14 +2055,14 @@ def handle_generate_captions(payload: Dict[str, Any], request) -> jsonify:
     if not content:
         return jsonify(error_response("Content is required"))
     
-    generated_caption = call_groq_api(AI_PROMPTS['legendas'], content, max_tokens=500)
+    generated_caption = call_openai_api(AI_PROMPTS['legendas'], content, max_tokens=500)
     
     if generated_caption:
         captions = [generated_caption]
         
         # Generate variations
         for _ in range(2):
-            variation = call_groq_api(AI_PROMPTS['legendas'], content, max_tokens=500)
+            variation = call_openai_api(AI_PROMPTS['legendas'], content, max_tokens=500)
             if variation and variation not in captions:
                 captions.append(variation)
         
@@ -1509,7 +2088,7 @@ def handle_rewrite_news(payload: Dict[str, Any], request) -> jsonify:
     if not content:
         return jsonify(error_response("News content is required"))
     
-    rewritten_content = call_groq_api(AI_PROMPTS['reescrita'], content, max_tokens=1500)
+    rewritten_content = call_openai_api(AI_PROMPTS['reescrita'], content, max_tokens=1500)
     
     if rewritten_content:
         lines = rewritten_content.strip().split('\n')
@@ -1534,14 +2113,14 @@ def handle_rewrite_news(payload: Dict[str, Any], request) -> jsonify:
             "News rewritten (fallback mode)!",
             rewrittenNews=fallback_news
         ))
-
+    
 def handle_save_caption(payload: Dict[str, Any], request) -> jsonify:
     """Handle manual caption saving"""
     caption = payload.get('manualCaption', '').strip()
     if not caption:
         return jsonify(error_response("Caption is required"))
     
-    logger.info(f"Caption saved: {caption[:50]}...")
+    logger.info("Caption saved: {caption[:50]}...")
     return jsonify(success_response("Caption saved successfully!"))
 
 def handle_save_rewrite(payload: Dict[str, Any], request) -> jsonify:
@@ -1598,11 +2177,11 @@ def check_image_status(image_id):
         image_data = get_placid_image_status(image_id)
         if not image_data:
             return jsonify(error_response("Image not found")), 404
-        
+
         status = image_data.get('status')
         if status == 'finished' and image_data.get('image_url'):
             return jsonify(success_response(
-                "Image processing completed",
+                "Image processing complted",
                 status="finished",
                 imageUrl=image_data['image_url']
             ))
@@ -1620,7 +2199,318 @@ def check_image_status(image_id):
         logger.error(f"Error checking image status {image_id}: {e}")
         return jsonify(error_response("Error checking image status")), 500
 
+@app.route('/api/debug-video', methods=['POST'])
+def debug_video():
+    """
+    🔍 DEBUG ENDPOINT - Analisa vídeos em detalhes para identificar problemas
+    Especialmente útil para debugar vídeos do Android
+    """
+    logger.info("🔍 ===== DEBUG VIDEO ENDPOINT =====")
+
+    try:
+        # Verifica se MoviePy está disponível
+        if mpe is None:
+            return jsonify({
+                'error': 'MoviePy não disponível',
+                'details': 'Instale com: pip install moviepy imageio imageio-ffmpeg',
+                'moviepy_available': False
+            }), 500
+
+        # Recebe arquivo
+        if 'file' not in request.files:
+            return jsonify({'error': 'Nenhum arquivo enviado'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'Arquivo vazio'}), 400
+
+        # Salva arquivo temporariamente
+        success, filepath, public_url = save_uploaded_file(file, "debug")
+        if not success:
+            return jsonify({'error': f'Falha ao salvar arquivo: {public_url}'}), 400
+
+        logger.info(f"📁 Arquivo salvo em: {filepath}")
+
+        # Informações básicas do arquivo
+        file_info = {
+            'filename': os.path.basename(filepath),
+            'extension': os.path.splitext(filepath)[1].lower(),
+            'size_mb': round(os.path.getsize(filepath) / (1024 * 1024), 2),
+            'path': filepath
+        }
+
+        logger.info(f"📊 Extensão: {file_info['extension']}, Tamanho: {file_info['size_mb']}MB")
+
+        # Tenta analisar o vídeo com MoviePy
+        video_info = {}
+        conversion_info = {}
+        errors = []
+        warnings = []
+
+        try:
+            logger.info("🎬 Tentando carregar vídeo com MoviePy...")
+            clip = mpe.VideoFileClip(filepath)
+
+            video_info = {
+                'duration': round(clip.duration, 2),
+                'fps': clip.fps,
+                'size': f"{clip.size[0]}x{clip.size[1]}",
+                'width': clip.size[0],
+                'height': clip.size[1],
+                'aspect_ratio': round(clip.size[0] / clip.size[1], 2),
+                'has_audio': clip.audio is not None,
+                'codec': str(getattr(clip, 'codec', 'unknown')),
+                'reader_type': str(type(clip.reader).__name__)
+            }
+
+            logger.info(f"✅ Vídeo carregado: {video_info['size']}, {video_info['duration']}s, {video_info['fps']}fps")
+
+            # Verifica se precisa conversão
+            needs_conversion = False
+            conversion_reasons = []
+
+            # 1. Verifica extensão
+            if file_info['extension'] in ['.mov', '.hevc', '.3gp']:
+                needs_conversion = True
+                conversion_reasons.append(f"Extensão {file_info['extension']} requer conversão")
+                warnings.append(f"⚠️ Extensão {file_info['extension']} pode não ser compatível")
+
+            # 2. Verifica codec HEVC/H.265
+            codec_str = str(video_info['codec']).lower()
+            if 'hevc' in codec_str or 'h265' in codec_str:
+                needs_conversion = True
+                conversion_reasons.append(f"Codec {video_info['codec']} requer conversão")
+                warnings.append(f"⚠️ Codec HEVC/H.265 detectado - incompatível com alguns navegadores")
+
+            # 3. Verifica FPS muito alto ou baixo
+            if video_info['fps'] > 60:
+                warnings.append(f"⚠️ FPS alto ({video_info['fps']}) será reduzido para 60")
+            elif video_info['fps'] < 24:
+                warnings.append(f"⚠️ FPS baixo ({video_info['fps']}) será ajustado para 24")
+
+            # 4. Verifica aspect ratio para reels (9:16 é ideal)
+            ideal_aspect = 9/16
+            if abs(video_info['aspect_ratio'] - ideal_aspect) > 0.1:
+                warnings.append(f"⚠️ Aspect ratio {video_info['aspect_ratio']} diferente do ideal para reels (0.56 ou 9:16)")
+
+            # 5. Verifica duração
+            if video_info['duration'] > 600:  # 10 minutos
+                warnings.append(f"⚠️ Vídeo muito longo ({video_info['duration']}s) - pode dar timeout (máx recomendado: 600s)")
+
+            conversion_info = {
+                'needs_conversion': needs_conversion,
+                'reasons': conversion_reasons,
+                'will_be_converted': needs_conversion
+            }
+
+            # Testa extração de frame
+            try:
+                logger.info("🖼️ Testando extração de frame...")
+                frame_time = min(1.0, video_info['duration'] / 2)
+                frame = clip.get_frame(frame_time)
+                logger.info(f"✅ Frame extraído com sucesso em {frame_time}s")
+                video_info['frame_extraction'] = 'OK'
+            except Exception as frame_error:
+                logger.error(f"❌ Erro ao extrair frame: {frame_error}")
+                errors.append(f"Erro ao extrair frame: {str(frame_error)}")
+                video_info['frame_extraction'] = 'FAILED'
+
+            clip.close()
+
+        except Exception as video_error:
+            logger.error(f"❌ Erro ao analisar vídeo: {video_error}")
+            errors.append(f"Erro ao carregar vídeo: {str(video_error)}")
+            video_info['error'] = str(video_error)
+
+        # Verifica dependências do sistema
+        system_info = {
+            'moviepy_version': getattr(mpe, '__version__', 'unknown'),
+            'python_version': os.sys.version.split()[0],
+            'platform': os.sys.platform
+        }
+
+        # Testa FFmpeg
+        try:
+            import subprocess
+            result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
+            system_info['ffmpeg_available'] = True
+            system_info['ffmpeg_version'] = result.stdout.split('\n')[0] if result.returncode == 0 else 'unknown'
+        except Exception as ffmpeg_error:
+            system_info['ffmpeg_available'] = False
+            system_info['ffmpeg_error'] = str(ffmpeg_error)
+            errors.append("⚠️ FFmpeg não encontrado ou não disponível")
+
+        # Monta resposta completa
+        response = {
+            'success': len(errors) == 0,
+            'file_info': file_info,
+            'video_info': video_info,
+            'conversion_info': conversion_info,
+            'system_info': system_info,
+            'warnings': warnings,
+            'errors': errors,
+            'android_compatibility': {
+                'format_supported': file_info['extension'] in ['.mp4', '.mov', '.3gp', '.webm'],
+                'codec_compatible': 'hevc' not in str(video_info.get('codec', '')).lower() and 'h265' not in str(video_info.get('codec', '')).lower(),
+                'size_ok': file_info['size_mb'] < 700,
+                'duration_ok': video_info.get('duration', 0) < 600
+            }
+        }
+
+        logger.info(f"🎯 Debug completo: {len(errors)} erros, {len(warnings)} avisos")
+
+        return jsonify(response), 200 if len(errors) == 0 else 206
+
+    except Exception as e:
+        logger.error(f"❌ Erro no debug endpoint: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'error': 'Erro ao processar debug',
+            'details': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
 # HTML Template
+# Template de Login
+LOGIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Tribuna Hoje</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #c3161f 0%, #8b0000 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 50px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .logo { font-size: 4rem; margin-bottom: 20px; }
+        
+        .login-container h1 {
+            color: #c3161f;
+            margin-bottom: 10px;
+            font-size: 2rem;
+        }
+        
+        .login-container p {
+            color: #6c757d;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #c3161f;
+        }
+        
+        .btn-login {
+            width: 100%;
+            padding: 15px;
+            background: #c3161f;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-login:hover {
+            background: #8b0000;
+            transform: translateY(-2px);
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">🔐</div>
+        <h1>TRIBUNA HOJE</h1>
+        <p>App Automação Instagram</p>
+        
+        {% if error %}
+        <div class="error-message">
+            ❌ Senha incorreta! Tente novamente.
+        </div>
+        {% endif %}
+        
+        <form method="POST" action="/login">
+            <div class="form-group">
+                <label for="password">Senha de Acesso</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    name="password" 
+                    placeholder="Digite a senha" 
+                    required 
+                    autofocus
+                >
+            </div>
+            
+            <button type="submit" class="btn-login">
+                Entrar 🚀
+            </button>
+        </form>
+        
+        <div class="footer">
+            © 2025 Tribuna Hoje
+        </div>
+    </div>
+</body>
+</html>
+"""
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -1777,7 +2667,7 @@ HTML_TEMPLATE = """
             display: block;
             margin-bottom: 5px;
             font-weight: 600;
-            color: #ffffff;
+            color: #2c3e50;
         }
 
         .control-input {
@@ -2006,11 +2896,13 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>TRIBUNA HOJE APLICATIVO</h1>
-            <p>Ferramenta Completa Criação de Conteúdo Instagram</p>
-        </div>
+    <div class="header">
+    <h1>PosTH APP - TRIBUNA HOJE</h1>
+    <p>Ferramenta Completa Criação de Conteúdo no Instagram</p>
+    <a href="/logout" style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 5px; margin-top: 15px; display: inline-block;">
+        🔒 Sair
+    </a>
+</div>
 
         <div class="tabs-container">
             <div class="tabs-nav">
@@ -2103,7 +2995,7 @@ HTML_TEMPLATE = """
                 <div class="controls-section">
                     <div class="control-group">
                         <label class="control-label">Cole o texto da notícia ou link</label>
-                        <textarea class="control-input" id="noticia-texto" rows="6" placeholder="Cole aqui o texto da notícia ou o link para análise..."></textarea>
+                        <textarea class="control-input" id="noticia-texto" rows="6" placeholder="Cole aqui o texto completo da notícia"></textarea>
                     </div>
 
                     <div class="loading" id="title-loading">
@@ -2144,7 +3036,7 @@ HTML_TEMPLATE = """
                 <div class="controls-section">
                     <div class="control-group">
                         <label class="control-label">Cole o texto da notícia ou link</label>
-                        <textarea class="control-input" id="legenda-texto" rows="6" placeholder="Cole aqui o texto da notícia ou o link para análise..."></textarea>
+                        <textarea class="control-input" id="legenda-texto" rows="6" placeholder="Cole aqui o texto da notícia"></textarea>
                     </div>
 
                     <div class="loading" id="caption-loading">
@@ -2244,7 +3136,8 @@ HTML_TEMPLATE = """
                 { key: 'feed_1', label: 'Feed - Modelo 1', icon: '🖼️' },
                 { key: 'feed_2', label: 'Feed - Modelo 2', icon: '🔴' },
                 { key: 'feed_3', label: 'Feed - Modelo 3', icon: '⚪' },
-                { key: 'feed_4', label: 'Feed - Modelo 4', icon: '⚫' }
+                { key: 'feed_4', label: 'Feed - Modelo 4', icon: '⚫' },
+                { key: 'feed_capa_jornal', label: 'Capa de Jornal', icon: '📰' }
             ],
             stories: [
                 { key: 'stories_1', label: 'Stories - Modelo 1', icon: '📱' },
@@ -2303,9 +3196,9 @@ HTML_TEMPLATE = """
             const file = input.files[0];
             if (!file) return;
             
-            // Validate file size (16MB limit)
-            if (file.size > 16 * 1024 * 1024) {
-                showError('Arquivo muito grande. Limite: 16MB', type);
+            // Validate file size (700MB limit)
+            if (file.size > 700 * 1024 * 1024) {
+                showError('Arquivo muito grande. Limite: 700MB', type);
                 return;
             }
             
@@ -2382,37 +3275,50 @@ HTML_TEMPLATE = """
 }
 
         // Template selection
-        function selectTemplate(templateKey) {
-            document.querySelectorAll('.template-item').forEach(item => item.classList.remove('selected'));
-            
-            if (event && event.target) {
-                event.target.closest('.template-item').classList.add('selected');
-            } else {
-                const templateElement = document.querySelector(`[onclick="selectTemplate('${templateKey}')"]`);
-                if (templateElement) {
-                    templateElement.classList.add('selected');
-                }
-            }
-            
-            selectedTemplate = templateKey;
-            updateFieldsForTemplate(templateKey);
+        // Template selection - atualizada para Capa de Jornal
+function selectTemplate(templateKey) {
+    document.querySelectorAll('.template-item').forEach(item => item.classList.remove('selected'));
+    
+    if (event && event.target) {
+        event.target.closest('.template-item').classList.add('selected');
+    } else {
+        const templateElement = document.querySelector(`[onclick="selectTemplate('${templateKey}')"]`);
+        if (templateElement) {
+            templateElement.classList.add('selected');
         }
-        
-        function updateFieldsForTemplate(templateKey) {
-            const assuntoGroup = document.getElementById('assunto-group');
-            const creditosGroup = document.getElementById('creditos-group');
-            
-            if (templateKey.includes('feed')) {
-                assuntoGroup.style.display = 'block';
-                creditosGroup.style.display = 'block';
-            } else if (templateKey.includes('reels')) {
-                assuntoGroup.style.display = 'none';
-                creditosGroup.style.display = 'none';
-            } else {
-                assuntoGroup.style.display = 'none';
-                creditosGroup.style.display = 'none';
-            }
-        }
+    }
+    
+    selectedTemplate = templateKey;
+    updateFieldsForTemplate(templateKey);
+}
+
+function updateFieldsForTemplate(templateKey) {
+    const tituloGroup = document.getElementById('titulo-group');
+    const assuntoGroup = document.getElementById('assunto-group');
+    const creditosGroup = document.getElementById('creditos-group');
+    
+    // NOVO: Capa de Jornal não precisa de nenhum campo
+    if (templateKey === 'feed_capa_jornal') {
+        tituloGroup.style.display = 'none';
+        assuntoGroup.style.display = 'none';
+        creditosGroup.style.display = 'none';
+    } else if (templateKey.includes('feed')) {
+        // Feed normal: mostra todos
+        tituloGroup.style.display = 'block';
+        assuntoGroup.style.display = 'block';
+        creditosGroup.style.display = 'block';
+    } else if (templateKey.includes('reels')) {
+        // Reels: só título
+        tituloGroup.style.display = 'block';
+        assuntoGroup.style.display = 'none';
+        creditosGroup.style.display = 'none';
+    } else {
+        // Stories: só título
+        tituloGroup.style.display = 'block';
+        assuntoGroup.style.display = 'none';
+        creditosGroup.style.display = 'none';
+    }
+}
 
         // API call helper
         async function sendToAPI(action, data, file = null) {
@@ -2439,7 +3345,7 @@ HTML_TEMPLATE = """
                 return await response.json();
             } catch (error) {
                 console.error('API error:', error);
-                return { success: false, message: 'Error processing request' };
+                return { success: false, message: '🚫 ACESSO BLOQUEADO - CRÉDITOS ESGOTADOS!' };
             }
         }
 
@@ -2477,25 +3383,27 @@ HTML_TEMPLATE = """
 
         // Generate post
         async function generatePost() {
-            if (!uploadedFiles.post) {
-                showError('Por favor, faça upload de um arquivo primeiro.', 'post');
-                return;
-            }
-            
-            const titulo = document.getElementById('titulo').value.trim();
-            const assunto = document.getElementById('assunto').value.trim();
-            const creditos = document.getElementById('creditos').value.trim();
-            
-            // Validate required fields based on template
-if (selectedTemplate.includes('feed') && (!titulo || !assunto || !creditos)) {
-    showError('Para templates de Feed, título, assunto e créditos são obrigatórios.', 'post');
-    return;
-}
-
-if (selectedTemplate.includes('reels') && !titulo) {
-    showError('Para templates de Reels, o título é obrigatório.', 'post');
-    return;
-}
+    if (!uploadedFiles.post) {
+        showError('Por favor, faça upload de um arquivo primeiro.', 'post');
+        return;
+    }
+    
+    const titulo = document.getElementById('titulo').value.trim();
+    const assunto = document.getElementById('assunto').value.trim();
+    const creditos = document.getElementById('creditos').value.trim();
+    
+    // NOVO: Capa de Jornal não precisa de validação
+    if (selectedTemplate === 'feed_capa_jornal') {
+        // Não valida nada, apenas continua
+    } else if (selectedTemplate.includes('feed') && (!titulo || !assunto || !creditos)) {
+        // Feed normal: valida todos os campos
+        showError('Para templates de Feed, título, assunto e créditos são obrigatórios.', 'post');
+        return;
+    } else if (selectedTemplate.includes('reels') && !titulo) {
+        // Reels: valida só título
+        showError('Para templates de Reels, o título é obrigatório.', 'post');
+        return;
+    }
 
 // Watermark não exige título - permite vazio
 
@@ -2820,4 +3728,20 @@ if __name__ == '__main__':
         logger.info(f"   - {template['name']}: {template['uuid']}")
     
     logger.info("🌐 Server running on: http://0.0.0.0:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    
+    # AUMENTA TIMEOUT PARA VÍDEOS LONGOS (10 MINUTOS)
+    import socket
+    socket.setdefaulttimeout(900)  # 15 minutos (margem de segurança)
+    logger.info("⏱️ Timeout configurado: 900 segundos (15 min)")
+    
+    # CONFIGURAÇÃO OTIMIZADA PARA PRODUÇÃO
+    from werkzeug.serving import WSGIRequestHandler
+    WSGIRequestHandler.protocol_version = "HTTP/1.1"
+    
+    app.run(
+        debug=False,  # ← Desabilita debug em produção
+        host='0.0.0.0',
+        port=5000,
+        threaded=True,
+        request_handler=WSGIRequestHandler
+    )
