@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DuttyAI Gateway • Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+      :root {
+        --bg: #0b0f14;
+        --surface: #11161d;
+        --sidebar: #0d1218;
+        --card: #141a22;
+        --border: #1e2630;
+        --text: #e6edf3;
+        --muted: #9aa4af;
+        --accent: #7c5cff;
+        --accent-weak: rgba(124,92,255,0.15);
+        --success: #35c759;
+        --warning: #f0b429;
+        --danger: #ff5a5f;
+        --shadow: 0 8px 24px rgba(0,0,0,0.35);
+      }
+      [data-theme="light"] {
+        --bg: #f7f8fa;
+        --surface: #ffffff;
+        --sidebar: #f5f6f8;
+        --card: #ffffff;
+        --border: #e5e7eb;
+        --text: #0b0f14;
+        --muted: #5b6672;
+        --accent: #6c4dff;
+        --accent-weak: rgba(108,77,255,0.1);
+        --shadow: 0 6px 14px rgba(22,29,37,0.08);
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        background: var(--bg);
+        color: var(--text);
+      }
+      .app {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        grid-template-rows: 64px 1fr;
+        grid-template-areas:
+          "sidebar header"
+          "sidebar main";
+        min-height: 100vh;
+      }
+      aside.sidebar {
+        grid-area: sidebar;
+        background: var(--sidebar);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        padding: 16px 12px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border-radius: 10px;
+      }
+      .brand-logo {
+        width: 34px; height: 34px;
+        border-radius: 10px;
+        display: grid; place-items: center;
+        background: linear-gradient(135deg, var(--accent), #3c8cff);
+        box-shadow: inset 0 0 14px rgba(255,255,255,0.15), var(--shadow);
+      }
+      .brand-name { font-weight: 700; letter-spacing: 0.3px; }
+      nav.menu { margin-top: 12px; display: grid; gap: 6px; }
+      .menu h6 { margin: 16px 12px 8px; color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+      .nav-item {
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        color: var(--muted);
+        cursor: pointer;
+        transition: .18s ease background, .18s ease color;
+      }
+      .nav-item:hover { background: var(--accent-weak); color: var(--text); }
+      .nav-item.active { background: var(--accent); color: white; }
+      .spacer { flex: 1; }
+      .sidebar-footer { display: grid; gap: 10px; }
+      .mini-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      header.topbar {
+        grid-area: header;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 16px;
+      }
+      .search {
+        display: flex; align-items: center; gap: 8px;
+        flex: 1; max-width: 560px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 12px;
+      }
+      .search input {
+        width: 100%; border: 0; outline: none; background: transparent;
+        color: var(--text); font-size: 14px;
+      }
+      .actions { display: flex; align-items: center; gap: 10px; }
+      .btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 12px; border-radius: 10px; font-weight: 600; font-size: 13px;
+        border: 1px solid var(--border); background: var(--card); color: var(--text);
+        cursor: pointer; transition: .2s ease all;
+      }
+      .btn:hover { transform: translateY(-1px); }
+      .btn.primary { background: var(--accent); border-color: transparent; color: white; }
+      .avatar { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #2b3340, #1d232e); border: 1px solid var(--border); }
+      main.content {
+        grid-area: main;
+        padding: 20px;
+        display: grid;
+        gap: 16px;
+      }
+      .grid { display: grid; gap: 16px; }
+      .grid.cols-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+      .grid.cols-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        padding: 16px;
+      }
+      .card-title { display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px; }
+      .metric { display: grid; gap: 6px; }
+      .metric .label { color: var(--muted); font-size: 12px; }
+      .metric .value { font-size: 22px; font-weight: 700; }
+      .metric .trend { font-size: 12px; color: var(--success); }
+      .kpis { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; }
+      .table { width: 100%; border-collapse: collapse; }
+      .table th, .table td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 13px; text-align: left; }
+      .table th { color: var(--muted); font-weight: 600; }
+      .status { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+      .status.paid { background: rgba(53,199,89,0.12); color: var(--success); }
+      .status.pending { background: rgba(240,180,41,0.12); color: var(--warning); }
+      .status.refunded { background: rgba(255,90,95,0.12); color: var(--danger); }
+      .section { display:none; }
+      .section.active { display:block; }
+      .filters { display:flex; gap:10px; align-items:center; }
+      .input {
+        display:flex; align-items:center; gap:8px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 10px;
+      }
+      .input input, .input select { background: transparent; border: 0; outline: none; color: var(--text); font-size: 13px; }
+      .badge { padding:6px 10px; border-radius:999px; background: var(--accent-weak); color: var(--text); font-weight:600; font-size:12px; }
+      .integrations { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:14px; }
+      .integration { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px; border:1px solid var(--border); border-radius:12px; background: var(--surface); }
+      .settings { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:14px; }
+      .toggle { appearance:none; width:42px; height:24px; border-radius:999px; position:relative; background: #2a3240; border:1px solid var(--border); cursor:pointer; }
+      .toggle:checked { background: var(--accent); }
+      .toggle::after { content:""; width:18px; height:18px; border-radius:50%; position:absolute; top:2px; left:3px; background:white; transition:.18s ease all; }
+      .toggle:checked::after { left:21px; }
+      .api-key { display:flex; gap:8px; align-items:center; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .hidden { display:none; }
+      @media (max-width: 1080px) {
+        .app { grid-template-columns: 72px 1fr; }
+        .brand-name { display:none; }
+        .nav-item span { display:none; }
+        .kpis { grid-template-columns: repeat(2, minmax(0,1fr)); }
+        .grid.cols-3 { grid-template-columns: repeat(1, minmax(0,1fr)); }
+        .grid.cols-2 { grid-template-columns: repeat(1, minmax(0,1fr)); }
+        .integrations { grid-template-columns: repeat(2, minmax(0,1fr)); }
+        .settings { grid-template-columns: repeat(1, minmax(0,1fr)); }
+      }
+      @media (max-width: 680px) {
+        header.topbar { padding: 8px; }
+        .search { display:none; }
+        .integrations { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app" id="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-logo">⚡</div>
+          <div class="brand-name">DuttyAI Gateway</div>
+        </div>
+        <nav class="menu" id="menu">
+          <h6>Navegação</h6>
+          <div class="nav-item active" data-target="vendas">💳 <span>Vendas</span></div>
+          <div class="nav-item" data-target="produtos">🛍️ <span>Produtos</span></div>
+          <div class="nav-item" data-target="dominios">🌐 <span>Domínios</span></div>
+          <div class="nav-item" data-target="reembolsos">↩️ <span>Reembolsos</span></div>
+          <div class="nav-item" data-target="relatorios">📈 <span>Relatórios</span></div>
+          <div class="nav-item" data-target="integracoes">🔌 <span>Integrações</span></div>
+          <div class="nav-item" data-target="financeiro">💰 <span>Financeiro</span></div>
+          <div class="nav-item" data-target="configuracoes">⚙️ <span>Configurações</span></div>
+          <div class="nav-item" data-target="adm">🛡️ <span>ADM</span></div>
+        </nav>
+        <div class="spacer"></div>
+        <div class="sidebar-footer">
+          <div class="mini-card">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <div style="display:grid; gap:4px;">
+                <div style="font-weight:700;">Receita do dia</div>
+                <div style="color:var(--muted); font-size:12px;">Atualizado há 4 min</div>
+              </div>
+              <div class="badge">R$ 8.923,40</div>
+            </div>
+          </div>
+          <button class="btn" id="toggleTheme">Tema</button>
+        </div>
+      </aside>
+
+      <header class="topbar">
+        <div class="search">
+          🔎
+          <input type="search" id="globalSearch" placeholder="Pesquisar transações, clientes, produtos..." />
+        </div>
+        <div class="actions">
+          <button class="btn" id="dateRange">Últimos 30 dias ▾</button>
+          <button class="btn">Exportar CSV</button>
+          <button class="btn primary">Nova Cobrança</button>
+          <div class="avatar" title="Minha conta"></div>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="section active" id="vendas">
+          <div class="grid cols-3">
+            <div class="card">
+              <div class="card-title"><strong>Visão Geral</strong><span class="badge">Hoje</span></div>
+              <div class="kpis">
+                <div class="metric"><div class="label">Receita</div><div class="value">R$ 42.380,21</div><div class="trend">+12.3% vs ontem</div></div>
+                <div class="metric"><div class="label">Vendas</div><div class="value">1.238</div><div class="trend">+4.1%</div></div>
+                <div class="metric"><div class="label">Ticket Médio</div><div class="value">R$ 34,22</div><div class="trend">+1.7%</div></div>
+                <div class="metric"><div class="label">Taxa de Aprov.</div><div class="value">96.2%</div><div class="trend">+0.6%</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title"><strong>Receita • 30 dias</strong></div>
+              <canvas id="revenueChart" height="120"></canvas>
+            </div>
+            <div class="card">
+              <div class="card-title"><strong>Métodos de pagamento</strong></div>
+              <canvas id="methodsChart" height="120"></canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title"><strong>Transações recentes</strong>
+              <div class="filters">
+                <div class="input"><span>🔎</span><input type="search" id="txSearch" placeholder="Buscar por cliente, pedido ou ID" /></div>
+                <div class="input"><span>⚙️</span>
+                  <select id="statusFilter">
+                    <option value="">Todos status</option>
+                    <option value="paid">Pago</option>
+                    <option value="pending">Pendente</option>
+                    <option value="refunded">Reembolsado</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <table class="table" id="txTable">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Cliente</th>
+                  <th>Produto</th>
+                  <th>Método</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                  <th>Data</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section" id="produtos">
+          <div class="card">
+            <div class="card-title"><strong>Produtos</strong><button class="btn">Novo Produto</button></div>
+            <div class="grid cols-2">
+              <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <div>
+                    <div style="font-weight:700;">Curso DuttyFy Pro</div>
+                    <div style="color:var(--muted);">Assinatura • R$ 89/mês</div>
+                  </div>
+                  <button class="btn">Editar</button>
+                </div>
+              </div>
+              <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <div>
+                    <div style="font-weight:700;">E-book Growth Playbook</div>
+                    <div style="color:var(--muted);">Pagamento único • R$ 149</div>
+                  </div>
+                  <button class="btn">Editar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="dominios">
+          <div class="card">
+            <div class="card-title"><strong>Domínios</strong><button class="btn">Adicionar Domínio</button></div>
+            <table class="table">
+              <thead><tr><th>Domínio</th><th>Status</th><th>SSL</th><th>Ações</th></tr></thead>
+              <tbody>
+                <tr><td>checkout.duttyai.com</td><td><span class="status paid">Conectado</span></td><td>Ativo</td><td><button class="btn">Renovar</button></td></tr>
+                <tr><td>pay.duttyfy.io</td><td><span class="status pending">Propagando</span></td><td>Pendente</td><td><button class="btn">Ver DNS</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section" id="reembolsos">
+          <div class="card">
+            <div class="card-title"><strong>Reembolsos</strong><button class="btn">Política</button></div>
+            <table class="table">
+              <thead><tr><th>ID</th><th>Cliente</th><th>Valor</th><th>Motivo</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody>
+                <tr><td>#R-8231</td><td>Ana Souza</td><td>R$ 89,00</td><td>Arrependimento</td><td><span class="status pending">Em análise</span></td><td><button class="btn">Aprovar</button></td></tr>
+                <tr><td>#R-8199</td><td>João Lima</td><td>R$ 149,00</td><td>Duplicidade</td><td><span class="status refunded">Concluído</span></td><td><button class="btn">Detalhes</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section" id="relatorios">
+          <div class="card">
+            <div class="card-title"><strong>Relatórios</strong><button class="btn">Gerar PDF</button></div>
+            <div class="grid cols-2">
+              <div class="card"><div class="card-title"><strong>Performance por canal</strong></div><canvas id="channelsChart" height="120"></canvas></div>
+              <div class="card"><div class="card-title"><strong>Taxas por bandeira</strong></div><canvas id="brandsChart" height="120"></canvas></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="integracoes">
+          <div class="card">
+            <div class="card-title"><strong>Integrações</strong><button class="btn">Nova Integração</button></div>
+            <div class="integrations">
+              <div class="integration"><div>Stripe</div><button class="btn">Conectar</button></div>
+              <div class="integration"><div>Mercado Pago</div><button class="btn">Conectar</button></div>
+              <div class="integration"><div>PagSeguro</div><button class="btn">Conectar</button></div>
+            </div>
+            <div style="margin-top:12px;" class="api-key">
+              <div class="input mono"><span>🔑</span><input id="apiKey" value="sk_live_3xK9...VxFj" readonly /></div>
+              <button class="btn" id="copyKey">Copiar</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="financeiro">
+          <div class="card">
+            <div class="card-title"><strong>Financeiro</strong><button class="btn">Solicitar Saque</button></div>
+            <div class="grid cols-3">
+              <div class="mini-card"><div class="label">Saldo disponível</div><div class="value">R$ 18.402,12</div></div>
+              <div class="mini-card"><div class="label">Próx. Pagamento</div><div class="value">Qua, 04 Dez</div></div>
+              <div class="mini-card"><div class="label">Taxa média</div><div class="value">2,79%</div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="configuracoes">
+          <div class="card">
+            <div class="card-title"><strong>Configurações</strong></div>
+            <div class="settings">
+              <div class="card">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                  <div>
+                    <div style="font-weight:700;">Modo escuro</div>
+                    <div style="color:var(--muted);">Tema do painel</div>
+                  </div>
+                  <input type="checkbox" class="toggle" id="darkToggle">
+                </div>
+              </div>
+              <div class="card">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                  <div>
+                    <div style="font-weight:700;">2FA</div>
+                    <div style="color:var(--muted);">Proteja o acesso administrativo</div>
+                  </div>
+                  <button class="btn">Ativar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="adm">
+          <div class="card">
+            <div class="card-title"><strong>Área ADM</strong><button class="btn">Criar Usuário</button></div>
+            <table class="table">
+              <thead><tr><th>Usuário</th><th>Permissão</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody>
+                <tr><td>bruno@duttyai.com</td><td>Admin</td><td><span class="status paid">Ativo</span></td><td><button class="btn">Editar</button></td></tr>
+                <tr><td>maria@duttyai.com</td><td>Suporte</td><td><span class="status pending">Convite</span></td><td><button class="btn">Reenviar</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const state = {
+        theme: localStorage.getItem('theme') || 'dark',
+        tx: [
+          {id:'#TX-10384', cliente:'Carlos Silva', produto:'Curso DuttyFy Pro', metodo:'Cartão • Visa', valor:89.00, status:'paid', data:'2025-11-30 10:42'},
+          {id:'#TX-10383', cliente:'Ana Souza', produto:'E-book Growth', metodo:'Pix', valor:149.00, status:'paid', data:'2025-11-30 10:28'},
+          {id:'#TX-10382', cliente:'Pedro Santos', produto:'Curso DuttyFy Pro', metodo:'Boleto', valor:89.00, status:'pending', data:'2025-11-30 10:15'},
+          {id:'#TX-10381', cliente:'Julia Alves', produto:'Curso DuttyFy Pro', metodo:'Cartão • Master', valor:89.00, status:'refunded', data:'2025-11-30 09:58'},
+          {id:'#TX-10380', cliente:'Marcos Dias', produto:'E-book Growth', metodo:'Cartão • Amex', valor:149.00, status:'paid', data:'2025-11-30 09:40'},
+          {id:'#TX-10379', cliente:'Beatriz Lima', produto:'Curso DuttyFy Pro', metodo:'Pix', valor:89.00, status:'paid', data:'2025-11-30 09:22'}
+        ]
+      };
+
+      document.body.setAttribute('data-theme', state.theme === 'light' ? 'light' : 'dark');
+      const menu = document.getElementById('menu');
+      const sections = Array.from(document.querySelectorAll('.section'));
+      const navItems = Array.from(document.querySelectorAll('.nav-item'));
+
+      function setActive(target) {
+        navItems.forEach(i => i.classList.toggle('active', i.dataset.target === target));
+        sections.forEach(s => s.classList.toggle('active', s.id === target));
+        location.hash = target;
+      }
+      window.addEventListener('hashchange', () => {
+        const t = location.hash.replace('#','') || 'vendas';
+        setActive(t);
+      });
+      navItems.forEach(i => i.addEventListener('click', () => setActive(i.dataset.target)));
+      setActive(location.hash.replace('#','') || 'vendas');
+
+      const toggleThemeBtn = document.getElementById('toggleTheme');
+      const darkToggle = document.getElementById('darkToggle');
+      function applyTheme(t){
+        document.body.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+        localStorage.setItem('theme', t);
+        if(darkToggle) darkToggle.checked = t !== 'light';
+        // Reconstruir gráficos para refletir cores do tema
+        buildCharts();
+      }
+      toggleThemeBtn.addEventListener('click', () => { state.theme = state.theme === 'light' ? 'dark' : 'light'; applyTheme(state.theme); });
+      if(darkToggle){ darkToggle.checked = state.theme !== 'light'; darkToggle.addEventListener('change', e => applyTheme(e.target.checked ? 'dark' : 'light')); }
+
+      const txTableBody = document.querySelector('#txTable tbody');
+      const txSearch = document.getElementById('txSearch');
+      const statusFilter = document.getElementById('statusFilter');
+      function renderTx(){
+        const q = (txSearch?.value || '').toLowerCase();
+        const f = statusFilter?.value || '';
+        const rows = state.tx.filter(t => (!f || t.status === f) && (!q || Object.values(t).join(' ').toLowerCase().includes(q)));
+        txTableBody.innerHTML = rows.map(t => `
+          <tr>
+            <td>${t.id}</td>
+            <td>${t.cliente}</td>
+            <td>${t.produto}</td>
+            <td>${t.metodo}</td>
+            <td>R$ ${t.valor.toFixed(2).replace('.', ',')}</td>
+            <td><span class="status ${t.status}">${t.status === 'paid' ? 'Pago' : t.status === 'pending' ? 'Pendente' : 'Reembolsado'}</span></td>
+            <td>${t.data}</td>
+          </tr>`).join('');
+      }
+      txSearch?.addEventListener('input', renderTx);
+      statusFilter?.addEventListener('change', renderTx);
+      renderTx();
+
+      const revenueEl = document.getElementById('revenueChart');
+      const methodsEl = document.getElementById('methodsChart');
+      const channelsEl = document.getElementById('channelsChart');
+      const brandsEl = document.getElementById('brandsChart');
+
+      // Guardar instâncias para destruir antes de recriar
+      const chartInstances = { revenue: null, methods: null, channels: null, brands: null };
+
+      function buildCharts(){
+        const styles = getComputedStyle(document.body);
+        const gridColor = styles.getPropertyValue('--border').trim();
+        const textColor = styles.getPropertyValue('--text').trim();
+        const accentColor = styles.getPropertyValue('--accent').trim();
+
+        const common = {
+          plugins: { legend: { labels: { color: textColor } } },
+          scales: {
+            x: { grid: { color: gridColor }, ticks: { color: textColor } },
+            y: { grid: { color: gridColor }, ticks: { color: textColor } }
+          }
+        };
+
+        // Destruir instâncias existentes para evitar sobreposição
+        chartInstances.revenue?.destroy();
+        chartInstances.methods?.destroy();
+        chartInstances.channels?.destroy();
+        chartInstances.brands?.destroy();
+
+        if(revenueEl){
+          chartInstances.revenue = new Chart(revenueEl, {
+            type: 'line',
+            data: {
+              labels: Array.from({length: 12}, (_,i)=>`Nov ${i+1}`),
+              datasets: [{
+                label:'Receita',
+                data: [12,14,13,18,22,21,24,28,26,30,32,38],
+                borderColor: accentColor,
+                fill: true,
+                backgroundColor: 'rgba(124,92,255,0.12)',
+                tension: .35
+              }]
+            },
+            options: { ...common, plugins: { ...common.plugins, legend: { display:false } } }
+          });
+        }
+        if(methodsEl){
+          chartInstances.methods = new Chart(methodsEl, {
+            type: 'doughnut',
+            data: {
+              labels: ['Cartão', 'Pix', 'Boleto'],
+              datasets: [{ data: [62, 28, 10], backgroundColor: [accentColor, '#3c8cff', '#35c759'] }]
+            },
+            options: { plugins: { legend: { position:'bottom', labels: { color: textColor } } } }
+          });
+        }
+        if(channelsEl){
+          chartInstances.channels = new Chart(channelsEl, {
+            type: 'bar',
+            data: { labels: ['Orgânico','Ads','Afiliados','Email'], datasets: [{ label:'Vendas', data:[420,610,280,330], backgroundColor: accentColor }] },
+            options: common
+          });
+        }
+        if(brandsEl){
+          chartInstances.brands = new Chart(brandsEl, {
+            type: 'bar',
+            data: { labels: ['Visa','Master','Amex','Elo'], datasets: [{ label:'Taxa média %', data:[2.4,2.6,2.9,3.1], backgroundColor: ['#7c5cff','#3c8cff','#35c759','#f0b429'] }] },
+            options: common
+          });
+        }
+      }
+      buildCharts();
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { buildCharts(); });
+
+      const copyBtn = document.getElementById('copyKey');
+      const apiKeyInput = document.getElementById('apiKey');
+      copyBtn?.addEventListener('click', async () => {
+        const key = apiKeyInput?.value || '';
+        try {
+          await navigator.clipboard.writeText(key);
+          copyBtn.textContent = 'Copiado!';
+        } catch {
+          // Fallback para navegadores com restrições de clipboard
+          const temp = document.createElement('textarea');
+          temp.value = key;
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand('copy');
+          document.body.removeChild(temp);
+          copyBtn.textContent = 'Copiado!';
+        } finally {
+          setTimeout(()=> copyBtn.textContent='Copiar', 1500);
+        }
+      });
+
+      document.getElementById('globalSearch')?.addEventListener('input', e => { const q = e.target.value.toLowerCase(); txSearch.value = q; renderTx(); });
+    </script>
+  </body>
+</html>
